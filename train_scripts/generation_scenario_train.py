@@ -1,6 +1,6 @@
 """
 After ten generations of training in a clean environment (one with no scenario reflex agents active),
-they are put into scxenario 2 with 4 reflex agents that always clean for 200 steps and then eat for 200 steps and repeat.
+they are put into scenario 2 with 4 reflex agents that always clean for 200 steps and then eat for 200 steps and repeat.
 The goal is to train the first agents even further in exploiting the cleaners and eat apples.
 """
 
@@ -289,8 +289,8 @@ def train():
     queue = ActionQueue(N_FOCAL, QUEUE_LEN, device)
 
     # Comparison tracking
-    focal_return_history    = deque(maxlen=COMPARE_WINDOW)
-    baseline_ep_returns     = deque(maxlen=COMPARE_WINDOW)
+    focal_return_history = deque(maxlen=COMPARE_WINDOW)
+    baseline_ep_returns = deque(maxlen=COMPARE_WINDOW)
 
     total_env_steps = 0
 
@@ -405,7 +405,7 @@ def train():
         adv_buf = adv_flat.reshape(t_end, N_FOCAL)
 
         # PPO update
-        ent_coef   = ENT_COEF_START - (ENT_COEF_START - ENT_COEF_END) * (ep / ANNEAL_EPISODES)
+        ent_coef = ENT_COEF_START - (ENT_COEF_START - ENT_COEF_END) * (ep / ANNEAL_EPISODES)
 
         for i in range(N_FOCAL):
             net_i = nets[i]
@@ -428,11 +428,11 @@ def train():
                     mb = idxs[start : start + MINIBATCH]
 
                     obs_mb = torch.stack([prep_obs(obs_i[s], device) for s in mb])
-                    act_mb = torch.as_tensor(act_i[mb],      device=device, dtype=torch.int64)
+                    act_mb = torch.as_tensor(act_i[mb], device=device, dtype=torch.int64)
                     logp_old_mb = torch.as_tensor(logp_old_i[mb], device=device, dtype=torch.float32)
-                    adv_mb = torch.as_tensor(adv_i[mb],      device=device, dtype=torch.float32)
-                    ret_mb = torch.as_tensor(ret_i[mb],      device=device, dtype=torch.float32)
-                    lastact_mb = torch.as_tensor(lastact_i[mb],  device=device, dtype=torch.int64)
+                    adv_mb = torch.as_tensor(adv_i[mb], device=device, dtype=torch.float32)
+                    ret_mb = torch.as_tensor(ret_i[mb], device=device, dtype=torch.float32)
+                    lastact_mb = torch.as_tensor(lastact_i[mb], device=device, dtype=torch.int64)
 
                     last_oh_mb = actions_to_onehot(lastact_mb, ACT_DIM)
 
@@ -472,9 +472,9 @@ def train():
         if ep < COMPARE_WINDOW:
             baseline_ep_returns.append(focal_mean)
 
-        rolling_mean  = np.mean(focal_return_history)
+        rolling_mean = np.mean(focal_return_history)
         baseline_mean = np.mean(baseline_ep_returns) if baseline_ep_returns else float('nan')
-        vs_baseline   = rolling_mean - baseline_mean
+        vs_baseline = rolling_mean - baseline_mean
 
         per_agent_str = "  ".join(f"a{i}={ep_ret[i]:.1f}" for i in range(N_FOCAL))
 

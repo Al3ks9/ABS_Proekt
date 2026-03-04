@@ -1,5 +1,5 @@
 """
-Agents trained with this script are put into a Scenario with 4 reflesx agents that first clean for 200 steps,
+Agents trained with this script are put into a Scenario with 4 reflex agents that first clean for 200 steps,
 then eat for 200 steps. We train 3 focal agents, whose goal is to exploit the cleaners' behaviour and eat as many apples as possible.
 """
 
@@ -69,7 +69,7 @@ RIGHT = 4
 TURN_LEFT = 5
 TURN_RIGHT = 6
 ZAP = 7
-CLEAN_ACT  = 8
+CLEAN_ACT = 8
 
 COMPARE_WINDOW = 50
 
@@ -77,11 +77,11 @@ COMPARE_WINDOW = 50
 class ActionQueue:
     def __init__(self, n_agents: int, maxlen: int, device):
         self.n_agents = n_agents
-        self.maxlen   = maxlen
-        self.device   = device
-        self.buf      = torch.full((n_agents, maxlen), fill_value=-1,
-                                   dtype=torch.int64, device=device)
-        self.ptr      = 0
+        self.maxlen = maxlen
+        self.device = device
+        self.buf = torch.full((n_agents, maxlen), fill_value=-1,
+                              dtype=torch.int64, device=device)
+        self.ptr = 0
 
     def reset(self):
         self.buf.fill_(-1)
@@ -101,7 +101,7 @@ class AgentNetwork(nn.Module):
     def __init__(self, n_agents: int, act_dim: int):
         super().__init__()
         self.n_agents = n_agents
-        self.act_dim  = act_dim
+        self.act_dim = act_dim
 
         self.cnn = nn.Sequential(
             nn.Conv2d(OBS_C, 32, kernel_size=8, stride=4), nn.ReLU(),
@@ -117,7 +117,7 @@ class AgentNetwork(nn.Module):
         raw_in = self.cnn_out_dim + n_agents * act_dim
 
         self.policy_fc = nn.Sequential(
-            nn.Linear(raw_in,    FC_HIDDEN), nn.ReLU(),
+            nn.Linear(raw_in, FC_HIDDEN), nn.ReLU(),
             nn.Linear(FC_HIDDEN, FC_HIDDEN), nn.ReLU(),
         )
         self.actor = nn.Linear(FC_HIDDEN, act_dim)
@@ -192,7 +192,7 @@ def is_water_roi(rgb):
 
 
 def clean_fraction_roi(rgb):
-    patch  = rgb[ROI].astype(np.float32)
+    patch = rgb[ROI].astype(np.float32)
     d_dirty = np.linalg.norm(patch - DIRTY, axis=2)
     d_clean = np.linalg.norm(patch - CLEAN, axis=2)
     return float((d_clean < d_dirty).mean())
@@ -275,8 +275,8 @@ def train():
 
     queue = ActionQueue(N_FOCAL, QUEUE_LEN, device)
 
-    focal_return_history    = deque(maxlen=COMPARE_WINDOW)
-    baseline_ep_returns     = deque(maxlen=COMPARE_WINDOW)
+    focal_return_history = deque(maxlen=COMPARE_WINDOW)
+    baseline_ep_returns = deque(maxlen=COMPARE_WINDOW)
 
     total_env_steps = 0
 
@@ -318,16 +318,16 @@ def train():
             all_logits_t = torch.stack(all_logits)
             all_values_t = torch.stack(all_values)
 
-            dist    = Categorical(logits=all_logits_t)
-            acts_t  = dist.sample()
+            dist = Categorical(logits=all_logits_t)
+            acts_t = dist.sample()
             logps_t = dist.log_prob(acts_t)
 
             # Step environment
-            acts_np  = acts_t.cpu().numpy()
-            actions  = [int(acts_np[i]) for i in range(N_FOCAL)]
+            acts_np = acts_t.cpu().numpy()
+            actions = [int(acts_np[i]) for i in range(N_FOCAL)]
             timestep = env.step(actions)
 
-            env_rewards  = get_timestep_rewards(timestep, N_FOCAL)
+            env_rewards = get_timestep_rewards(timestep, N_FOCAL)
             next_obs_list = get_timestep_obs_list(timestep, N_FOCAL)
 
             # Apple reward boost
@@ -385,7 +385,7 @@ def train():
 
         adv_flat = adv_buf.reshape(-1)
         adv_flat = (adv_flat - adv_flat.mean()) / (adv_flat.std() + 1e-8)
-        adv_buf  = adv_flat.reshape(t_end, N_FOCAL)
+        adv_buf = adv_flat.reshape(t_end, N_FOCAL)
 
         ent_coef = ENT_COEF_START - (ENT_COEF_START - ENT_COEF_END) * (ep / ANNEAL_EPISODES)
 

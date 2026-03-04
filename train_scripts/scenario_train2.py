@@ -102,7 +102,7 @@ class AgentNetwork(nn.Module):
     def __init__(self, n_agents: int, act_dim: int):
         super().__init__()
         self.n_agents = n_agents
-        self.act_dim  = act_dim
+        self.act_dim = act_dim
 
         self.cnn = nn.Sequential(
             nn.Conv2d(OBS_C, 32, kernel_size=8, stride=4), nn.ReLU(),
@@ -358,7 +358,7 @@ def train():
             actions = [int(acts_np[i]) for i in range(N_FOCAL)]
             timestep = env.step(actions)
 
-            env_rewards  = get_timestep_rewards(timestep, N_FOCAL)
+            env_rewards = get_timestep_rewards(timestep, N_FOCAL)
             next_obs_list = get_timestep_obs_list(timestep, N_FOCAL)
 
             # Apple reward boost
@@ -421,7 +421,7 @@ def train():
         adv_buf = adv_flat.reshape(t_end, N_FOCAL)
 
         # PPO update
-        ent_coef_copy   = ENT_COEF_START - (ENT_COEF_START - ENT_COEF_END) * (ep / ANNEAL_EPISODES)
+        ent_coef_copy = ENT_COEF_START - (ENT_COEF_START - ENT_COEF_END) * (ep / ANNEAL_EPISODES)
         ent_coef_anchor = 0.1
 
         for i in range(N_FOCAL):

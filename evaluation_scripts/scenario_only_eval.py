@@ -7,7 +7,7 @@ Read more in the Melting Pot official documentation about the scenarios.
 
 import logging
 logging.getLogger('absl').setLevel(logging.ERROR)
-import os
+import os, csv
 import numpy as np
 import torch
 import torch.nn as nn
@@ -17,22 +17,22 @@ from meltingpot import scenario as scenario_lib
 import dm_env
 import pygame
 
-
 SCENARIO_NAME = 'clean_up_2'
-CHECKPOINT_PATH  = "../checkpoints/focal_sc2_2/"
+CHECKPOINT_PATH = "../checkpoints/scenario2_2_impl/"
 N_FOCAL = 3
 ACT_DIM = 9
 OBS_H, OBS_W, OBS_C = 88, 88, 3
 FC_HIDDEN = 256
 SCALE = 3
 FPS = 15
+N_EPISODES = 10
 
 
 class AgentNetwork(nn.Module):
     def __init__(self, n_agents: int, act_dim: int):
         super().__init__()
         self.n_agents = n_agents
-        self.act_dim  = act_dim
+        self.act_dim = act_dim
         self.cnn = nn.Sequential(
             nn.Conv2d(OBS_C, 32, kernel_size=8, stride=4), nn.ReLU(),
             nn.Conv2d(32, 64, kernel_size=4, stride=2), nn.ReLU(),
@@ -46,7 +46,7 @@ class AgentNetwork(nn.Module):
             nn.Linear(raw_in, FC_HIDDEN), nn.ReLU(),
             nn.Linear(FC_HIDDEN, FC_HIDDEN), nn.ReLU(),
         )
-        self.actor  = nn.Linear(FC_HIDDEN, act_dim)
+        self.actor = nn.Linear(FC_HIDDEN, act_dim)
         self.critic = nn.Linear(FC_HIDDEN, 1)
 
     def encode(self, obs_chw):
@@ -60,15 +60,11 @@ class AgentNetwork(nn.Module):
 def prep_obs(rgb_hwc, device):
     return (
         torch.tensor(rgb_hwc, dtype=torch.float32, device=device)
-        .div_(255.0)
-        .permute(2, 0, 1)
-        .contiguous()
+        .div_(255.0).permute(2, 0, 1).contiguous()
     )
-
 
 def actions_to_onehot(actions, act_dim):
     return F.one_hot(actions, num_classes=act_dim).float().view(1, -1)
-
 
 def get_world_rgb(env, timestep):
     try:
@@ -76,83 +72,108 @@ def get_world_rgb(env, timestep):
     except Exception:
         return np.array(timestep.observation[0]['RGB'])
 
-
 def get_actions(nets, obs_list, last_actions, device):
     obs_tensors = torch.stack([prep_obs(obs_list[i]['RGB'], device) for i in range(N_FOCAL)])
     last_oh = actions_to_onehot(last_actions, ACT_DIM).expand(N_FOCAL, -1)
-
     actions = []
     with torch.no_grad():
         for i in range(N_FOCAL):
             feat = nets[i].encode(obs_tensors[i:i+1])
             logits, _ = nets[i].forward_policy(feat, last_oh[i:i+1])
-            act = Categorical(logits=logits).sample()
-            actions.append(int(act.item()))
+            actions.append(int(Categorical(logits=logits).sample().item()))
     return actions
 
-
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-nets = []
-for i in range(N_FOCAL):
-    net  = AgentNetwork(N_FOCAL, ACT_DIM).to(device)   # 1. instantiate first
-    ckpt = os.path.join(CHECKPOINT_PATH, f"focal_agent_{i}_final.pt")
-    net.load_state_dict(torch.load(ckpt, map_location=device))  # 2. then load weights
-    net.eval()
-    nets.append(net)
-    print(f"Loaded focal agent {i} from {ckpt}")
-
-
-env = scenario_lib.build(SCENARIO_NAME)
-timestep = env.reset()
-obs_list = [dict(timestep.observation[i]) for i in range(N_FOCAL)]
-
-first_frame = get_world_rgb(env, timestep)
-h, w, _ = first_frame.shape
-
-
-pygame.init()
-screen = pygame.display.set_mode((w * SCALE, h * SCALE))
-pygame.display.set_caption(f"Melting Pot — {SCENARIO_NAME}")
-clock  = pygame.time.Clock()
-
-def render(env, timestep):
-    frame   = get_world_rgb(env, timestep)
-    surface = pygame.surfarray.make_surface(frame.swapaxes(0, 1))
-    scaled  = pygame.transform.scale(surface, (w * SCALE, h * SCALE))
-    screen.blit(scaled, (0, 0))
-    pygame.display.flip()
-    clock.tick(FPS)
-
-render(env, timestep)
-
-# Run Loop
-last_actions = torch.zeros(N_FOCAL, dtype=torch.int64, device=device)
-ep_ret = np.zeros(N_FOCAL, dtype=np.float32)
-step = 0
-
-running = True
-while running and timestep.step_type != dm_env.StepType.LAST:
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
-
-    actions = get_actions(nets, obs_list, last_actions, device)
-    last_actions = torch.tensor(actions, dtype=torch.int64, device=device)
-
-    timestep = env.step(actions)
+def run_episode(nets, device, screen, clock):
+    env = scenario_lib.build(SCENARIO_NAME)
+    timestep = env.reset()
     obs_list = [dict(timestep.observation[i]) for i in range(N_FOCAL)]
+    last_actions = torch.zeros(N_FOCAL, dtype=torch.int64, device=device)
+    ep_ret = np.zeros(N_FOCAL, dtype=np.float32)
+    aborted = False
 
-    if timestep.reward is not None:
-        for i in range(N_FOCAL):
-            r = timestep.reward[i]
-            ep_ret[i] += float(r) if r is not None else 0.0
+    while timestep.step_type != dm_env.StepType.LAST:
+        if screen:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    aborted = True
+            if aborted:
+                break
+            frame = get_world_rgb(env, timestep)
+            surf = pygame.surfarray.make_surface(frame.swapaxes(0, 1))
+            screen.blit(pygame.transform.scale(surf, screen.get_size()), (0, 0))
+            pygame.display.flip()
+            clock.tick(FPS)
 
-    render(env, timestep)
-    step += 1
+        actions = get_actions(nets, obs_list, last_actions, device)
+        last_actions = torch.tensor(actions, dtype=torch.int64, device=device)
+        timestep = env.step(actions)
+        obs_list = [dict(timestep.observation[i]) for i in range(N_FOCAL)]
+        if timestep.reward is not None:
+            for i in range(N_FOCAL):
+                r = timestep.reward[i]
+                ep_ret[i] += float(r) if r is not None else 0.0
 
-print(f"\nEpisode complete — {step} steps")
-print(f"Per-agent returns: {ep_ret}")
-print(f"Mean return: {ep_ret.mean():.2f}")
+    env.close()
+    return ep_ret, aborted
 
-pygame.quit()
-env.close()
+
+def evaluate(render=False):
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    nets = []
+    for i in range(N_FOCAL):
+        net = AgentNetwork(N_FOCAL, ACT_DIM).to(device)
+        ckpt = os.path.join(CHECKPOINT_PATH, f"focal_agent_{i}_final.pt")
+        net.load_state_dict(torch.load(ckpt, map_location=device))
+        net.eval()
+        nets.append(net)
+        print(f"Loaded focal agent {i} from {ckpt}")
+
+    screen, clock = None, None
+    if render:
+        pygame.init()
+        _probe = scenario_lib.build(SCENARIO_NAME)
+        _ts = _probe.reset()
+        _f = get_world_rgb(_probe, _ts)
+        _probe.close()
+        h, w, _ = _f.shape
+        screen = pygame.display.set_mode((w * SCALE, h * SCALE))
+        pygame.display.set_caption(f"Melting Pot — {SCENARIO_NAME}")
+        clock = pygame.time.Clock()
+
+    all_results = []
+
+    print(f"\n{'='*70}")
+    print(f"scenario_only | {SCENARIO_NAME} | {N_EPISODES} episodes")
+    print(f"{'='*70}")
+    print(f"{'ep':>4}  {'mean_return':>13}  per_agent")
+    print(f"{'-'*70}")
+
+    for ep in range(N_EPISODES):
+        ret, aborted = run_episode(nets, device, screen, clock)
+        all_results.append(ret)
+        per = "  ".join(f"a{i}={ret[i]:.1f}" for i in range(N_FOCAL))
+        print(f"{ep:>4}  {ret.mean():>13.2f}  [{per}]")
+        if aborted:
+            break
+
+    if render:
+        pygame.quit()
+
+    arr = np.array(all_results)
+    per_mean = "  ".join(f"a{i}={arr[:,i].mean():.1f}" for i in range(N_FOCAL))
+    print(f"{'-'*70}")
+    print(f"MEAN  {arr.mean():.2f}  [{per_mean}]")
+    print(f"{'='*70}\n")
+
+    with open("../results/results_scenario_only.csv", "w", newline="") as f:
+        wc = csv.writer(f)
+        wc.writerow(["episode"] + [f"agent_{i}" for i in range(N_FOCAL)] + ["mean_return"])
+        for ep in range(len(all_results)):
+            wc.writerow([ep] + list(arr[ep]) + [arr[ep].mean()])
+        wc.writerow(["MEAN"] + list(arr.mean(0)) + [arr.mean()])
+    print("Saved results_scenario_only.csv")
+
+
+if __name__ == '__main__':
+    evaluate(render=False)

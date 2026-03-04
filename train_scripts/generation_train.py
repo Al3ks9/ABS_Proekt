@@ -156,7 +156,6 @@ class FitnessTracker:
     def summary(self, gen: int) -> str:
         fitness = self.compute_fitness()
         ranked = np.argsort(fitness)[::-1]
-        steps = np.maximum(self.total_steps, 1)
 
         lines = [
             f"\n{'='*65}",
@@ -228,14 +227,14 @@ class AgentNetwork(nn.Module):
             nn.Linear(raw_in, FC_HIDDEN), nn.ReLU(),
             nn.Linear(FC_HIDDEN, FC_HIDDEN), nn.ReLU(),
         )
-        self.actor  = nn.Linear(FC_HIDDEN, act_dim)
+        self.actor = nn.Linear(FC_HIDDEN, act_dim)
         self.critic = nn.Linear(FC_HIDDEN, 1)
 
     def encode(self, obs_chw: torch.Tensor) -> torch.Tensor:
         return self.cnn(obs_chw)
 
     def forward_policy(self, cnn_feat, last_oh):
-        raw  = torch.cat([cnn_feat, last_oh], dim=-1)
+        raw = torch.cat([cnn_feat, last_oh], dim=-1)
         x = self.policy_fc(raw)
         logits = self.actor(x)
         value = self.critic(x).squeeze(-1)
@@ -254,7 +253,7 @@ def anti_degenerate_shaping(actions, shaped_rewards):
 
 
 def clean_fraction_roi(rgb):
-    patch   = rgb[ROI].astype(np.float32)
+    patch = rgb[ROI].astype(np.float32)
     d_dirty = np.linalg.norm(patch - DIRTY, axis=2)
     d_clean = np.linalg.norm(patch - CLEAN, axis=2)
     return float((d_clean < d_dirty).mean())
@@ -262,7 +261,7 @@ def clean_fraction_roi(rgb):
 
 def clean_success(obs_rgb, next_obs_rgb, delta=0.10):
     before = clean_fraction_roi(obs_rgb)
-    after  = clean_fraction_roi(next_obs_rgb)
+    after = clean_fraction_roi(next_obs_rgb)
     return (after - before) > delta
 
 
@@ -323,17 +322,17 @@ def compute_action_queue_penalties(queue: ActionQueue, n_agents: int, device) ->
 
     # Spin detection
     recent_spin = queue.last_k(SPIN_LOOKBACK)
-    is_turn     = (recent_spin == TURN_LEFT) | (recent_spin == TURN_RIGHT)
-    has_left_turn    = (recent_spin == TURN_LEFT).any(dim=1)
-    has_right_turn   = (recent_spin == TURN_RIGHT).any(dim=1)
-    valid       = (recent_spin != -1).all(dim=1)
-    spinning    = valid & is_turn.all(dim=1) & (has_left_turn | has_right_turn)
+    is_turn = (recent_spin == TURN_LEFT) | (recent_spin == TURN_RIGHT)
+    has_left_turn = (recent_spin == TURN_LEFT).any(dim=1)
+    has_right_turn = (recent_spin == TURN_RIGHT).any(dim=1)
+    valid = (recent_spin != -1).all(dim=1)
+    spinning = valid & is_turn.all(dim=1) & (has_left_turn | has_right_turn)
     penalties[spinning] += SPIN_PENALTY
 
     # No-clean detection
     recent_clean = queue.last_k(CLEAN_LOOKBACK)
-    valid_clean  = (recent_clean != -1).all(dim=1)
-    cleaned      = (recent_clean == CLEAN_ACT).any(dim=1)
+    valid_clean = (recent_clean != -1).all(dim=1)
+    cleaned = (recent_clean == CLEAN_ACT).any(dim=1)
     penalties[valid_clean & ~cleaned] += NO_CLEAN_PENALTY
 
     return penalties
@@ -451,12 +450,12 @@ def train():
                 all_logits_t = torch.stack(all_logits)
                 all_values_t = torch.stack(all_values)
 
-                dist    = Categorical(logits=all_logits_t)
-                acts_t  = dist.sample()
+                dist = Categorical(logits=all_logits_t)
+                acts_t = dist.sample()
                 logps_t = dist.log_prob(acts_t)
 
                 # Step environment
-                acts_np      = acts_t.cpu().numpy()
+                acts_np = acts_t.cpu().numpy()
                 actions_dict = {agents[i]: int(acts_np[i]) for i in range(N_AGENTS)}
                 next_obs, raw_rewards, terminations, truncations, _ = env.step(actions_dict)
 
@@ -502,8 +501,8 @@ def train():
                     break
 
 
-            v_last       = np.zeros(N_AGENTS, dtype=np.float32)
-            obs_last     = torch.stack([
+            v_last = np.zeros(N_AGENTS, dtype=np.float32)
+            obs_last = torch.stack([
                 prep_obs(obs_dict[agents[i]]["RGB"], device) for i in range(N_AGENTS)
             ])
             last_oh_final = actions_to_onehot(
@@ -511,9 +510,9 @@ def train():
             )
             with torch.no_grad(), torch.amp.autocast("cuda"):
                 for i in range(N_AGENTS):
-                    feat_i       = nets[i].encode(obs_last[i:i+1])
-                    _, val_i     = nets[i].forward_policy(feat_i, last_oh_final[i:i+1])
-                    v_last[i]    = float(val_i.item())
+                    feat_i = nets[i].encode(obs_last[i:i+1])
+                    _, val_i = nets[i].forward_policy(feat_i, last_oh_final[i:i+1])
+                    v_last[i] = float(val_i.item())
 
             # GAE per agent
             adv_buf = np.zeros((t_end, N_AGENTS), dtype=np.float32)
